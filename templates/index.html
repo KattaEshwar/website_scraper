@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Universal Website Scraper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .loading {
+      margin-top: 10px;
+      color: #555;
+    }
+
+    .error {
+      margin-top: 10px;
+      color: red;
+    }
+
+    .section {
+      border: 1px solid #ddd;
+      margin-top: 15px;
+      border-radius: 4px;
+    }
+
+    .section-header {
+      padding: 10px;
+      background: #f0f0f0;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .section-content {
+      display: none;
+      padding: 10px;
+      background: #fff;
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 13px;
+    }
+
+    .download-btn {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <h1>Universal Website Scraper</h1>
+    <p>Enter a URL to scrape static and JS-rendered content.</p>
+
+    <input type="text" id="urlInput" placeholder="https://example.com" />
+
+    <button onclick="startScrape()">Scrape</button>
+
+    <div id="loading" class="loading" style="display:none;">
+      Scraping in progress... please wait
+    </div>
+
+    <div id="error" class="error"></div>
+
+    <div id="results"></div>
+
+    <button id="downloadBtn" class="download-btn" style="display:none;" onclick="downloadJSON()">
+      Download JSON
+    </button>
+    <button id="downloadPdfBtn" class="download-btn"
+      style="display:none; background-color: #e74c3c; color: white; border: none; margin-left: 10px;"
+      onclick="downloadPDF()">
+      Download PDF
+    </button>
+  </div>
+
+  <script>
+    let fullResult = null;
+
+    async function startScrape() {
+      const url = document.getElementById("urlInput").value;
+      const loading = document.getElementById("loading");
+      const errorDiv = document.getElementById("error");
+      const resultsDiv = document.getElementById("results");
+      const downloadBtn = document.getElementById("downloadBtn");
+
+      errorDiv.innerText = "";
+      resultsDiv.innerHTML = "";
+      downloadBtn.style.display = "none";
+
+      if (!url) {
+        errorDiv.innerText = "Please enter a URL.";
+        return;
+      }
+
+      loading.style.display = "block";
+
+      try {
+        const res = await fetch("/scrape", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ url })
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Server Error: ${res.status}`);
+        }
+
+        const data = await res.json();
+        fullResult = data;
+
+        renderSections(data.result.sections);
+        downloadBtn.style.display = "inline-block";
+        document.getElementById("downloadPdfBtn").style.display = "inline-block";
+
+      } catch (err) {
+        errorDiv.innerText = err.message || "Failed to scrape the website.";
+      } finally {
+        loading.style.display = "none";
+      }
+    }
+
+    function renderSections(sections) {
+      const resultsDiv = document.getElementById("results");
+
+      sections.forEach((section, index) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "section";
+
+        const header = document.createElement("div");
+        header.className = "section-header";
+        header.innerText = `${section.label} (${section.type})`;
+
+        const content = document.createElement("div");
+        content.className = "section-content";
+        content.innerText = JSON.stringify(section, null, 2);
+
+        header.onclick = () => {
+          content.style.display =
+            content.style.display === "none" ? "block" : "none";
+        };
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(content);
+        resultsDiv.appendChild(wrapper);
+      });
+    }
+
+    function downloadJSON() {
+      const blob = new Blob(
+        [JSON.stringify(fullResult, null, 2)],
+        { type: "application/json" }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "scrape_result.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function downloadPDF() {
+      if (!fullResult) return;
+
+      const loading = document.getElementById("loading");
+      loading.innerText = "Generating PDF...";
+      loading.style.display = "block";
+
+      try {
+        const res = await fetch("/export/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fullResult)
+        });
+
+        if (!res.ok) throw new Error("Failed to generate PDF");
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "report.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Error generating PDF: " + err.message);
+      } finally {
+        loading.innerText = "Scraping in progress... please wait";
+        loading.style.display = "none";
+      }
+    }
+  </script>
+
+</body>
+
+</html>
